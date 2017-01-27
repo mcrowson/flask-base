@@ -3,8 +3,11 @@ from flask.ext.login import AnonymousUserMixin, UserMixin
 from itsdangerous import TimedJSONWebSignatureSerializer as Serializer
 from itsdangerous import BadSignature, SignatureExpired
 from werkzeug.security import check_password_hash, generate_password_hash
+from config import Config
+from pynamodb.models import Model
+from pynamodb.attributes import UnicodeAttribute, NumberAttribute, BooleanAttribute
 
-from .. import db, login_manager
+from .. import login_manager
 
 
 class Permission:
@@ -12,14 +15,19 @@ class Permission:
     ADMINISTER = 0xff
 
 
-class Role(db.Model):
-    __tablename__ = 'roles'
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(64), unique=True)
-    index = db.Column(db.String(64))
-    default = db.Column(db.Boolean, default=False, index=True)
-    permissions = db.Column(db.Integer)
-    users = db.relationship('User', backref='role', lazy='dynamic')
+class Role(Model):
+    class Meta:
+        table_name = 'roles'  # __tablename__ = 'roles'
+        host = Config.DYNAMO_URL
+        read_capacity_units = 1
+        write_capacity_units = 1
+
+    # id =  db.Column(db.Integer, primary_key=True)
+    name = UnicodeAttribute(hash_key=True)  # name = db.Column(db.String(64), unique=True)
+    index = UnicodeAttribute()  # index = db.Column(db.String(64))
+    default = BooleanAttribute()  # default = db.Column(db.Boolean, default=False, index=True)
+    permissions = NumberAttribute(range_key=True)  # permissions = db.Column(db.Integer)
+    # users = db.relationship('User', backref='role', lazy='dynamic')
 
     @staticmethod
     def insert_roles():
@@ -31,8 +39,11 @@ class Role(db.Model):
                 False  # grants all permissions
             )
         }
+
+        '''
         for r in roles:
-            role = Role.query.filter_by(name=r).first()
+            #role = Role.query.filter_by(name=r).first()
+
             if role is None:
                 role = Role(name=r)
             role.permissions = roles[r][0]
@@ -40,29 +51,36 @@ class Role(db.Model):
             role.default = roles[r][2]
             db.session.add(role)
         db.session.commit()
+        '''
+        for r, details in roles.items():
+            role = Role(name=r, permissions=details[0], index=details[1], default=details[2])
+            role.save()
 
     def __repr__(self):
         return '<Role \'%s\'>' % self.name
 
 
-class User(UserMixin, db.Model):
-    __tablename__ = 'users'
-    id = db.Column(db.Integer, primary_key=True)
-    confirmed = db.Column(db.Boolean, default=False)
-    first_name = db.Column(db.String(64), index=True)
-    last_name = db.Column(db.String(64), index=True)
-    email = db.Column(db.String(64), unique=True, index=True)
-    password_hash = db.Column(db.String(128))
-    role_id = db.Column(db.Integer, db.ForeignKey('roles.id'))
+class User(UserMixin, Model):
+    class Meta:
+        table_name = 'users'  # __tablename__ = 'users'
+        host = Config.DYNAMO_URL
+        read_capacity_units = 1
+        write_capacity_units = 1
+
+    email = UnicodeAttribute(hash_key=True)  # email = db.Column(db.String(64), unique=True, index=True)
+    confirmed = BooleanAttribute(default=False)  # confirmed = db.Column(db.Boolean, default=False)
+    first_name = UnicodeAttribute(range_key=True)  # first_name = db.Column(db.String(64), index=True)
+    last_name = UnicodeAttribute(range_key=True)  # last_name = db.Column(db.String(64), index=True)
+    password_hash = UnicodeAttribute()  # password_hash = db.Column(db.String(128))
+    role_id = NumberAttribute()  # role_id = db.Column(db.Integer, db.ForeignKey('roles.id'))
 
     def __init__(self, **kwargs):
         super(User, self).__init__(**kwargs)
-        if self.role is None:
+        if self.role_id is None:  # if self.role is None:
             if self.email == current_app.config['ADMIN_EMAIL']:
-                self.role = Role.query.filter_by(
-                    permissions=Permission.ADMINISTER).first()
-            if self.role is None:
-                self.role = Role.query.filter_by(default=True).first()
+                self.role_id = Role.scan(limit=1, permissions__eq=Permission.ADMINISTER)  # self.role = Role.query.filter_by(permissions=Permission.ADMINISTER).first()
+            else:
+                self.role_id = Role.scan(limit=1, permissions__eq=Permission.GENERAL)  # self.role = Role.query.filter_by(default=True).first()
 
     def full_name(self):
         return '%s %s' % (self.first_name, self.last_name)
@@ -113,8 +131,9 @@ class User(UserMixin, db.Model):
         if data.get('confirm') != self.id:
             return False
         self.confirmed = True
-        db.session.add(self)
-        db.session.commit()
+        # db.session.add(self)
+        # db.session.commit()
+        self.save()
         return True
 
     def change_email(self, token):
@@ -129,11 +148,13 @@ class User(UserMixin, db.Model):
         new_email = data.get('new_email')
         if new_email is None:
             return False
-        if self.query.filter_by(email=new_email).first() is not None:
+        # if self.query.filter_by(email=new_email).first() is not None:
+        if self.count(self.id, limit=1, email__eq=new_email) > 0:
             return False
         self.email = new_email
-        db.session.add(self)
-        db.session.commit()
+        # db.session.add(self)
+        # db.session.commit()
+        self.save()
         return True
 
     def reset_password(self, token, new_password):
@@ -146,19 +167,20 @@ class User(UserMixin, db.Model):
         if data.get('reset') != self.id:
             return False
         self.password = new_password
-        db.session.add(self)
-        db.session.commit()
+        # db.session.add(self)
+        # db.session.commit()
+        self.save()
         return True
 
     @staticmethod
     def generate_fake(count=100, **kwargs):
         """Generate a number of fake users for testing."""
-        from sqlalchemy.exc import IntegrityError
+        # from sqlalchemy.exc import IntegrityError
         from random import seed, choice
         from faker import Faker
 
         fake = Faker()
-        roles = Role.query.all()
+        roles = Role.scan()
 
         seed()
         for i in range(count):
@@ -170,11 +192,14 @@ class User(UserMixin, db.Model):
                 confirmed=True,
                 role=choice(roles),
                 **kwargs)
+            '''
             db.session.add(u)
             try:
                 db.session.commit()
             except IntegrityError:
                 db.session.rollback()
+            '''
+            u.save()
 
     def __repr__(self):
         return '<User \'%s\'>' % self.full_name()
@@ -193,4 +218,4 @@ login_manager.anonymous_user = AnonymousUser
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    return User.query(user_id)

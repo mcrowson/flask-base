@@ -3,13 +3,13 @@ import os
 import subprocess
 from config import Config
 
-from flask.ext.migrate import Migrate, MigrateCommand
+# from flask.ext.migrate import Migrate, MigrateCommand
 from flask.ext.script import Manager, Shell
-from redis import Redis
-from rq import Connection, Queue, Worker
+# from redis import Redis
+# from rq import Connection, Queue, Worker
 
-from app import create_app, db
-from app.models import Role, User
+from app import create_app  #, db
+from app.models import Role, User, EditableHTML
 
 if os.path.exists('.env'):
     print('Importing environment from .env file')
@@ -20,15 +20,15 @@ if os.path.exists('.env'):
 
 app = create_app(os.getenv('FLASK_CONFIG') or 'default')
 manager = Manager(app)
-migrate = Migrate(app, db)
+# migrate = Migrate(app, db)
 
 
 def make_shell_context():
-    return dict(app=app, db=db, User=User, Role=Role)
+    return dict(app=app, User=User, Role=Role)
 
 
 manager.add_command('shell', Shell(make_context=make_shell_context))
-manager.add_command('db', MigrateCommand)
+# manager.add_command('db', MigrateCommand)
 
 
 @manager.command
@@ -46,9 +46,20 @@ def recreate_db():
     Recreates a local database. You probably should not use this on
     production.
     """
-    db.drop_all()
-    db.create_all()
-    db.session.commit()
+    if Role.exists():
+        Role.delete_table()
+    if User.exists():
+        User.delete_table()
+    if EditableHTML.exists():
+        EditableHTML.delete_table()
+
+    #User.create_table(wait=True)
+    Role.create_table(wait=True)
+    EditableHTML.create_table(wait=True)
+
+    # db.drop_all()
+    # db.create_all()
+    # db.session.commit()
 
 
 @manager.option(
@@ -81,20 +92,22 @@ def setup_general():
     """Runs the set-up needed for both local development and production.
        Also sets up first admin user."""
     Role.insert_roles()
-    admin_query = Role.query.filter_by(name='Administrator')
-    if admin_query.first() is not None:
-        if User.query.filter_by(email=Config.ADMIN_EMAIL).first() is None:
+    admin = Role.get('Administrator')
+    if admin is not None:
+        if User.get(Config.ADMIN_EMAIL) is None:
             user = User(
                 first_name='Admin',
                 last_name='Account',
                 password=Config.ADMIN_PASSWORD,
                 confirmed=True,
                 email=Config.ADMIN_EMAIL)
-            db.session.add(user)
-            db.session.commit()
+            # db.session.add(user)
+            # db.session.commit()
+            user.save()
             print('Added administrator {}'.format(user.full_name()))
 
-
+'''
+No worker in serverless model
 @manager.command
 def run_worker():
     """Initializes a slim rq task queue."""
@@ -108,6 +121,7 @@ def run_worker():
     with Connection(conn):
         worker = Worker(map(Queue, listen))
         worker.work()
+'''
 
 
 @manager.command

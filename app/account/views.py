@@ -4,7 +4,7 @@ from flask.ext.login import (current_user, login_required, login_user,
 from flask.ext.rq import get_queue
 
 from . import account
-from .. import db
+#from .. import db
 from ..email import send_email
 from ..models import User
 from .forms import (ChangeEmailForm, ChangePasswordForm, CreatePasswordForm,
@@ -17,7 +17,8 @@ def login():
     """Log in an existing user."""
     form = LoginForm()
     if form.validate_on_submit():
-        user = User.query.filter_by(email=form.email.data).first()
+        #user = User.get(email=form.email.data).first()
+        user = User.get(form.email.data)
         if user is not None and user.password_hash is not None and \
                 user.verify_password(form.password.data):
             login_user(user, form.remember_me.data)
@@ -38,8 +39,9 @@ def register():
             last_name=form.last_name.data,
             email=form.email.data,
             password=form.password.data)
-        db.session.add(user)
-        db.session.commit()
+        #db.session.add(user)
+        #db.session.commit()
+        user.save()
         token = user.generate_confirmation_token()
         confirm_link = url_for('account.confirm', token=token, _external=True)
         get_queue().enqueue(
@@ -78,7 +80,7 @@ def reset_password_request():
         return redirect(url_for('main.index'))
     form = RequestResetPasswordForm()
     if form.validate_on_submit():
-        user = User.query.filter_by(email=form.email.data).first()
+        user = User.get(form.email.data)
         if user:
             token = user.generate_password_reset_token()
             reset_link = url_for(
@@ -104,7 +106,7 @@ def reset_password(token):
         return redirect(url_for('main.index'))
     form = ResetPasswordForm()
     if form.validate_on_submit():
-        user = User.query.filter_by(email=form.email.data).first()
+        user = User.get(form.email.data)
         if user is None:
             flash('Invalid email address.', 'form-error')
             return redirect(url_for('main.index'))
@@ -126,8 +128,9 @@ def change_password():
     if form.validate_on_submit():
         if current_user.verify_password(form.old_password.data):
             current_user.password = form.new_password.data
-            db.session.add(current_user)
-            db.session.commit()
+            #db.session.add(current_user)
+            #db.session.commit()
+            current_user.save()
             flash('Your password has been updated.', 'form-success')
             return redirect(url_for('main.index'))
         else:
@@ -229,8 +232,9 @@ def join_from_invite(user_id, token):
         form = CreatePasswordForm()
         if form.validate_on_submit():
             new_user.password = form.password.data
-            db.session.add(new_user)
-            db.session.commit()
+            #db.session.add(new_user)
+            #db.session.commit()
+            new_user.save()
             flash('Your password has been set. After you log in, you can '
                   'go to the "Your Account" page to review your account '
                   'information and settings.', 'success')
@@ -258,6 +262,8 @@ def join_from_invite(user_id, token):
 @account.before_app_request
 def before_request():
     """Force user to confirm email before accessing login-required routes."""
+
+    me = current_user.next()
     if current_user.is_authenticated() \
             and not current_user.confirmed \
             and request.endpoint[:8] != 'account.' \

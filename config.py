@@ -28,18 +28,19 @@ class Config:
     EMAIL_SENDER = '{app_name} Admin <{email}>'.format(
         app_name=APP_NAME, email=MAIL_USERNAME)
 
-    REDIS_URL = os.getenv('REDISTOGO_URL') or 'http://localhost:6379'
+    DYNAMO_URL = os.environ.get('DYNAMO_CONN', 'http://127.0.0.1:8000/')
+    #REDIS_URL = os.getenv('REDISTOGO_URL') or 'http://localhost:6379'
 
-    RAYGUN_APIKEY = os.environ.get('RAYGUN_APIKEY')
+    #RAYGUN_APIKEY = os.environ.get('RAYGUN_APIKEY')
 
     # Parse the REDIS_URL to set RQ config variables
-    urlparse.uses_netloc.append('redis')
-    url = urlparse.urlparse(REDIS_URL)
+    #urlparse.uses_netloc.append('redis')
+    #url = urlparse.urlparse(REDIS_URL)
 
-    RQ_DEFAULT_HOST = url.hostname
-    RQ_DEFAULT_PORT = url.port
-    RQ_DEFAULT_PASSWORD = url.password
-    RQ_DEFAULT_DB = 0
+    #RQ_DEFAULT_HOST = url.hostname
+    #RQ_DEFAULT_PORT = url.port
+    #RQ_DEFAULT_PASSWORD = url.password
+    #RQ_DEFAULT_DB = 0
 
     @staticmethod
     def init_app(app):
