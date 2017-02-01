@@ -51,6 +51,12 @@ class RequestResetPasswordForm(Form):
 class ResetPasswordForm(Form):
     email = EmailField(
         'Email', validators=[InputRequired(), Length(1, 64), Email()])
+    current_passowrd = PasswordField(
+        'Current password',
+        validators=[
+            InputRequired()
+        ]
+    )
     new_password = PasswordField(
         'New password',
         validators=[
@@ -86,14 +92,3 @@ class ChangePasswordForm(Form):
     new_password2 = PasswordField(
         'Confirm new password', validators=[InputRequired()])
     submit = SubmitField('Update password')
-
-
-class ChangeEmailForm(Form):
-    email = EmailField(
-        'New email', validators=[InputRequired(), Length(1, 64), Email()])
-    password = PasswordField('Password', validators=[InputRequired()])
-    submit = SubmitField('Update email')
-
-    def validate_email(self, field):
-        if User.query.filter_by(email=field.data).first():
-            raise ValidationError('Email already registered.')

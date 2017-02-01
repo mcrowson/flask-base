@@ -8,7 +8,7 @@ from . import admin
 #from .. import db
 from ..decorators import admin_required
 from ..email import send_email
-from ..models import Role, User, EditableHTML
+from ..models import User, EditableHTML
 
 
 @admin.route('/')
@@ -78,62 +78,40 @@ def invite_user():
 @admin_required
 def registered_users():
     """View all registered users."""
-    users = User.scan()
-    roles = Role.scan()
+    users = User.list_users()
     return render_template(
-        'admin/registered_users.html', users=users, roles=roles)
+        'admin/registered_users.html', users=users)
 
 
 @admin.route('/user/<int:user_id>')
 @admin.route('/user/<int:user_id>/info')
 @login_required
 @admin_required
-def user_info(user_id):
+def user_info(email):
     """View a user's profile."""
-    user = User.get(user_id)
+    user = User.get_user(email=email)
     if user is None:
         abort(404)
     return render_template('admin/manage_user.html', user=user)
 
 
-@admin.route('/user/<int:user_id>/change-email', methods=['GET', 'POST'])
-@login_required
-@admin_required
-def change_user_email(user_id):
-    """Change a user's email."""
-    user = User.get(user_id)
-    if user is None:
-        abort(404)
-    form = ChangeUserEmailForm()
-    if form.validate_on_submit():
-        user.email = form.email.data
-        #db.session.add(user)
-        #db.session.commit()
-        user.save()
-        flash('Email for user {} successfully changed to {}.'
-              .format(user.full_name(), user.email), 'form-success')
-    return render_template('admin/manage_user.html', user=user, form=form)
-
-
 @admin.route(
-    '/user/<int:user_id>/change-account-type', methods=['GET', 'POST'])
+    '/user/<str:email>/change-account-type', methods=['GET', 'POST'])
 @login_required
 @admin_required
-def change_account_type(user_id):
+def change_account_type(email):
     """Change a user's account type."""
-    if current_user.id == user_id:
+    if current_user.email == email:
         flash('You cannot change the type of your own account. Please ask '
               'another administrator to do this.', 'error')
-        return redirect(url_for('admin.user_info', user_id=user_id))
+        return redirect(url_for('admin.user_info', email=email))
 
-    user = User.get(user_id)
+    user = User.get_user(email)
     if user is None:
         abort(404)
     form = ChangeAccountTypeForm()
     if form.validate_on_submit():
         user.role = form.role.data
-        #db.session.add(user)
-        #db.session.commit()
         user.save()
         flash('Role for user {} successfully changed to {}.'
               .format(user.full_name(), user.role.name), 'form-success')

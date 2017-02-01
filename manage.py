@@ -9,7 +9,7 @@ from flask.ext.script import Manager, Shell
 # from rq import Connection, Queue, Worker
 
 from app import create_app  #, db
-from app.models import Role, User, EditableHTML
+from app.models import User, EditableHTML
 
 if os.path.exists('.env'):
     print('Importing environment from .env file')
@@ -24,7 +24,7 @@ manager = Manager(app)
 
 
 def make_shell_context():
-    return dict(app=app, User=User, Role=Role)
+    return dict(app=app, User=User)
 
 
 manager.add_command('shell', Shell(make_context=make_shell_context))

@@ -1,13 +1,12 @@
-from flask import flash, redirect, render_template, request, url_for
+from flask import flash, redirect, render_template, request, url_for, session
 from flask.ext.login import (current_user, login_required, login_user,
                              logout_user)
 from flask.ext.rq import get_queue
 
 from . import account
-#from .. import db
 from ..email import send_email
 from ..models import User
-from .forms import (ChangeEmailForm, ChangePasswordForm, CreatePasswordForm,
+from .forms import (ChangePasswordForm, CreatePasswordForm,
                     LoginForm, RegistrationForm, RequestResetPasswordForm,
                     ResetPasswordForm)
 
@@ -17,7 +16,7 @@ def login():
     """Log in an existing user."""
     form = LoginForm()
     if form.validate_on_submit():
-        #user = User.get(email=form.email.data).first()
+
         user = User.get(form.email.data)
         if user is not None and user.password_hash is not None and \
                 user.verify_password(form.password.data):
@@ -110,7 +109,8 @@ def reset_password(token):
         if user is None:
             flash('Invalid email address.', 'form-error')
             return redirect(url_for('main.index'))
-        if user.reset_password(token, form.new_password.data):
+        if user.reset_password(token=token, previous_password=form.current_passowrd,
+                               new_password=form.new_password.data, access_token=session['AccessToken']):
             flash('Your password has been updated.', 'form-success')
             return redirect(url_for('account.login'))
         else:
@@ -136,45 +136,6 @@ def change_password():
         else:
             flash('Original password is invalid.', 'form-error')
     return render_template('account/manage.html', form=form)
-
-
-@account.route('/manage/change-email', methods=['GET', 'POST'])
-@login_required
-def change_email_request():
-    """Respond to existing user's request to change their email."""
-    form = ChangeEmailForm()
-    if form.validate_on_submit():
-        if current_user.verify_password(form.password.data):
-            new_email = form.email.data
-            token = current_user.generate_email_change_token(new_email)
-            change_email_link = url_for(
-                'account.change_email', token=token, _external=True)
-            get_queue().enqueue(
-                send_email,
-                recipient=new_email,
-                subject='Confirm Your New Email',
-                template='account/email/change_email',
-                # current_user is a LocalProxy, we want the underlying user
-                # object
-                user=current_user._get_current_object(),
-                change_email_link=change_email_link)
-            flash('A confirmation link has been sent to {}.'.format(new_email),
-                  'warning')
-            return redirect(url_for('main.index'))
-        else:
-            flash('Invalid email or password.', 'form-error')
-    return render_template('account/manage.html', form=form)
-
-
-@account.route('/manage/change-email/<token>', methods=['GET', 'POST'])
-@login_required
-def change_email(token):
-    """Change existing user's email with provided token."""
-    if current_user.change_email(token):
-        flash('Your email address has been updated.', 'success')
-    else:
-        flash('The confirmation link is invalid or has expired.', 'error')
-    return redirect(url_for('main.index'))
 
 
 @account.route('/confirm-account')

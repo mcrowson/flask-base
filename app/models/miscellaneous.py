@@ -1,12 +1,12 @@
 from pynamodb.models import Model
 from pynamodb.attributes import UnicodeAttribute
-from config import Config
+from flask import current_app
 
 
 class EditableHTML(Model):
     class Meta:
         table_name = 'editors'
-        host = Config.DYNAMO_URL
+        host = current_app.config['DYNAMO_URL']
         read_capacity_units = 1
         write_capacity_units = 1
 

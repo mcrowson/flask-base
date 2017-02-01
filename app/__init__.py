@@ -1,20 +1,18 @@
 import os
 from flask import Flask
 from flask.ext.mail import Mail
-#from flask.ext.sqlalchemy import SQLAlchemy
-from flask.ext.login import LoginManager
-from flask.ext.assets import Environment
-from flask.ext.wtf import CsrfProtect
-from flask.ext.compress import Compress
-from flask.ext.rq import RQ
+from flask_login import LoginManager
+from flask_assets import Environment
+from flask_wtf import CsrfProtect
+from flask_compress import Compress
 
 from config import config
 from assets import app_css, app_js, vendor_css, vendor_js
+from models import User
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 
 mail = Mail()
-#db = SQLAlchemy()
 csrf = CsrfProtect()
 compress = Compress()
 # Set up Flask-Login
@@ -32,11 +30,9 @@ def create_app(config_name):
 
     # Set up extensions
     mail.init_app(app)
-    #db.init_app(app)
     login_manager.init_app(app)
     csrf.init_app(app)
     compress.init_app(app)
-    RQ(app)
 
     # Register Jinja template functions
     from utils import register_template_utils

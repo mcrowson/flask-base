@@ -1,125 +1,81 @@
-from flask import current_app
+from flask import current_app, session
 from flask.ext.login import AnonymousUserMixin, UserMixin
 from itsdangerous import TimedJSONWebSignatureSerializer as Serializer
 from itsdangerous import BadSignature, SignatureExpired
-from werkzeug.security import check_password_hash, generate_password_hash
-from config import Config
-from pynamodb.models import Model
-from pynamodb.attributes import UnicodeAttribute, NumberAttribute, BooleanAttribute
+import boto3
 
 from .. import login_manager
 
 
-class Permission:
-    GENERAL = 0x01
-    ADMINISTER = 0xff
+class User(UserMixin, object):
 
+    @classmethod
+    def list_users(cls, boto3_session=None):
+        if not boto3_session:
+            boto3_session = boto3.Session()
 
-class Role(Model):
-    class Meta:
-        table_name = 'roles'  # __tablename__ = 'roles'
-        host = Config.DYNAMO_URL
-        read_capacity_units = 1
-        write_capacity_units = 1
+        client = boto3_session.client('cognito-idp')
+        response = client.list_users(
+            UserPoolId=current_app.config['COGNITO_POOL_ID']
+        )
+        return response.get('Users', [])
 
-    # id =  db.Column(db.Integer, primary_key=True)
-    name = UnicodeAttribute(hash_key=True)  # name = db.Column(db.String(64), unique=True)
-    index = UnicodeAttribute()  # index = db.Column(db.String(64))
-    default = BooleanAttribute()  # default = db.Column(db.Boolean, default=False, index=True)
-    permissions = NumberAttribute(range_key=True)  # permissions = db.Column(db.Integer)
-    # users = db.relationship('User', backref='role', lazy='dynamic')
+    @classmethod
+    def get_user(cls, email, boto3_session=None):
+        if not boto3_session:
+            boto3_session = boto3.Session()
 
-    @staticmethod
-    def insert_roles():
-        roles = {
-            'User': (Permission.GENERAL, 'main', True),
-            'Administrator': (
-                Permission.ADMINISTER,
-                'admin',
-                False  # grants all permissions
+        client = boto3_session.client('cognito-idp')
+        try:
+            response = client.admin_get_user(
+                UserPoolId=current_app.config['COGNITO_POOL_ID'],
+                Username=email
             )
-        }
+        except Exception:
+            # Ideally the exception UserNotFoundException would be specified, but it is declared in a json within botocore.
+            return
 
-        '''
-        for r in roles:
-            #role = Role.query.filter_by(name=r).first()
+        user = User()
+        for attribute in response.get('UserAttributes'):
+            setattr(user, attribute[u'Name'], attribute[u'Value'])
 
-            if role is None:
-                role = Role(name=r)
-            role.permissions = roles[r][0]
-            role.index = roles[r][1]
-            role.default = roles[r][2]
-            db.session.add(role)
-        db.session.commit()
-        '''
-        for r, details in roles.items():
-            role = Role(name=r, permissions=details[0], index=details[1], default=details[2])
-            role.save()
-
-    def __repr__(self):
-        return '<Role \'%s\'>' % self.name
-
-
-class User(UserMixin, Model):
-    class Meta:
-        table_name = 'users'  # __tablename__ = 'users'
-        host = Config.DYNAMO_URL
-        read_capacity_units = 1
-        write_capacity_units = 1
-
-    email = UnicodeAttribute(hash_key=True)  # email = db.Column(db.String(64), unique=True, index=True)
-    confirmed = BooleanAttribute(default=False)  # confirmed = db.Column(db.Boolean, default=False)
-    first_name = UnicodeAttribute(range_key=True)  # first_name = db.Column(db.String(64), index=True)
-    last_name = UnicodeAttribute(range_key=True)  # last_name = db.Column(db.String(64), index=True)
-    password_hash = UnicodeAttribute()  # password_hash = db.Column(db.String(128))
-    role_id = NumberAttribute()  # role_id = db.Column(db.Integer, db.ForeignKey('roles.id'))
+        return user
 
     def __init__(self, **kwargs):
+        self.client = boto3.client('cognito-idp')
+        self.email = None
+        self.given_name = None,
+        self.family_name = None,
+        self.session = None
+        self.role = None
+
         super(User, self).__init__(**kwargs)
-        if self.role_id is None:  # if self.role is None:
+        if self.role is None:  # if self.role is None:
             if self.email == current_app.config['ADMIN_EMAIL']:
-                self.role_id = Role.scan(limit=1, permissions__eq=Permission.ADMINISTER)  # self.role = Role.query.filter_by(permissions=Permission.ADMINISTER).first()
+                self.add_to_group('administrator')
             else:
-                self.role_id = Role.scan(limit=1, permissions__eq=Permission.GENERAL)  # self.role = Role.query.filter_by(default=True).first()
+                self.add_to_group('general')
 
     def full_name(self):
-        return '%s %s' % (self.first_name, self.last_name)
-
-    def can(self, permissions):
-        return self.role is not None and \
-            (self.role.permissions & permissions) == permissions
+        return '%s %s' % (self.given_name, self.family_name)
 
     def is_admin(self):
-        return self.can(Permission.ADMINISTER)
-
-    @property
-    def password(self):
-        raise AttributeError('`password` is not a readable attribute')
-
-    @password.setter
-    def password(self, password):
-        self.password_hash = generate_password_hash(password)
-
-    def verify_password(self, password):
-        return check_password_hash(self.password_hash, password)
+        return self.member_of_group('administrator')
 
     def generate_confirmation_token(self, expiration=604800):
         """Generate a confirmation token to email a new user."""
-
         s = Serializer(current_app.config['SECRET_KEY'], expiration)
-        return s.dumps({'confirm': self.id})
+        return s.dumps({'confirm': self.email})
 
     def generate_email_change_token(self, new_email, expiration=3600):
         """Generate an email change token to email an existing user."""
         s = Serializer(current_app.config['SECRET_KEY'], expiration)
-        return s.dumps({'change_email': self.id, 'new_email': new_email})
+        return s.dumps({'change_email': self.email, 'new_email': new_email})
 
     def generate_password_reset_token(self, expiration=3600):
-        """
-        Generate a password reset change token to email to an existing user.
-        """
+        """Generate a password reset change token to email to an existing user."""
         s = Serializer(current_app.config['SECRET_KEY'], expiration)
-        return s.dumps({'reset': self.id})
+        return s.dumps({'reset': self.email})
 
     def confirm_account(self, token):
         """Verify that the provided token is for this user's id."""
@@ -128,59 +84,62 @@ class User(UserMixin, Model):
             data = s.loads(token)
         except (BadSignature, SignatureExpired):
             return False
-        if data.get('confirm') != self.id:
+        if data.get('confirm') != self.email:
             return False
-        self.confirmed = True
-        # db.session.add(self)
-        # db.session.commit()
-        self.save()
+
+        self.client.admin_configm_signup(
+            UserPoolId=current_app.config['COGNITO_POOL_ID'],
+            Username=self.email
+        )
         return True
 
-    def change_email(self, token):
-        """Verify the new email for this user."""
-        s = Serializer(current_app.config['SECRET_KEY'])
-        try:
-            data = s.loads(token)
-        except (BadSignature, SignatureExpired):
-            return False
-        if data.get('change_email') != self.id:
-            return False
-        new_email = data.get('new_email')
-        if new_email is None:
-            return False
-        # if self.query.filter_by(email=new_email).first() is not None:
-        if self.count(self.id, limit=1, email__eq=new_email) > 0:
-            return False
-        self.email = new_email
-        # db.session.add(self)
-        # db.session.commit()
-        self.save()
-        return True
-
-    def reset_password(self, token, new_password):
+    def reset_password(self, token, previous_password, new_password, access_token):
         """Verify the new password for this user."""
         s = Serializer(current_app.config['SECRET_KEY'])
         try:
             data = s.loads(token)
         except (BadSignature, SignatureExpired):
             return False
-        if data.get('reset') != self.id:
+        if data.get('reset') != self.email:
             return False
-        self.password = new_password
-        # db.session.add(self)
-        # db.session.commit()
-        self.save()
+
+        self.client.change_password(
+            PreviousPassword=previous_password,
+            ProposedPassword=new_password,
+            AccessToken=access_token
+        )
         return True
+
+    def add_to_group(self, group_name):
+        """Adds user to a Cognito Group"""
+        self.client.admin_add_user_to_group(
+            UserPoolId=current_app.config['COGNITO_POOL_ID'],
+            Username=self.email,
+            GroupName=group_name
+        )
+
+    def member_of_group(self, group_name):
+        """Returns True if user is a member of the named group"""
+        response = self.client.admin_list_groups_for_user(
+            UserPoolId=current_app.config['COGNITO_POOL_ID'],
+            Username=self.email,
+        )
+
+        for group in response.get('Groups', []):
+            if group['GroupName'] == group_name:
+                return True
+        return False
+
 
     @staticmethod
     def generate_fake(count=100, **kwargs):
         """Generate a number of fake users for testing."""
-        # from sqlalchemy.exc import IntegrityError
+
+        # TODO have placebo mock up responses with these 100 users rather than generate them each time
         from random import seed, choice
         from faker import Faker
 
         fake = Faker()
-        roles = Role.scan()
 
         seed()
         for i in range(count):
@@ -192,13 +151,7 @@ class User(UserMixin, Model):
                 confirmed=True,
                 role=choice(roles),
                 **kwargs)
-            '''
-            db.session.add(u)
-            try:
-                db.session.commit()
-            except IntegrityError:
-                db.session.rollback()
-            '''
+
             u.save()
 
     def __repr__(self):
@@ -206,10 +159,12 @@ class User(UserMixin, Model):
 
 
 class AnonymousUser(AnonymousUserMixin):
-    def can(self, _):
+    @staticmethod
+    def member_of_group(_):
         return False
 
-    def is_admin(self):
+    @staticmethod
+    def is_admin():
         return False
 
 
@@ -217,5 +172,38 @@ login_manager.anonymous_user = AnonymousUser
 
 
 @login_manager.user_loader
-def load_user(user_id):
-    return User.query(user_id)
+def user_loader(email, boto3_session=None):
+    return User.get_user(email, boto3_session=boto3_session)
+
+
+@login_manager.request_loader
+def request_loader(request, boto3_session=None):
+    email = request.form.get('email')
+    if not boto3_session:
+        boto3_session = boto3.Session()
+
+    client = boto3_session.client('cognito-idp')
+    try:
+        response = client.admin_initiate_auth(
+            UserPoolId=current_app.config['COGNITO_POOL_ID'],
+            ClientId=current_app.config['COGNITO_APP_CLIENT_ID'],
+            AuthFlow='ADMIN_NO_SRP_AUTH',
+            AuthParameters={'USERNAME': request.form.get('email'),
+                            'PASSWORD': request.form['pw']})
+    except Exception:
+        # Ideally the exception UserNotFoundException would be specified, but it is declared in a json within botocore.
+        return
+
+    session.update(response.get(u'AuthenticationResult'))
+    response = client.admin_get_user(
+        UserPoolId=current_app.config['COGNITO_POOL_ID'],
+        Username=email
+    )
+
+    user = User()
+    user.session = session.get('SessionId')
+    for attribute in response.get('UserAttributes'):
+        setattr(user, attribute[u'Name'], attribute[u'Value'])
+
+    user.is_authenticated = True
+    return user
