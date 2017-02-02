@@ -1,11 +1,9 @@
 from flask import abort, flash, redirect, render_template, url_for, request
 from flask.ext.login import current_user, login_required
-from flask.ext.rq import get_queue
 
 from forms import (ChangeAccountTypeForm, ChangeUserEmailForm, InviteUserForm,
                    NewUserForm)
 from . import admin
-#from .. import db
 from ..decorators import admin_required
 from ..email import send_email
 from ..models import User, EditableHTML
@@ -32,8 +30,6 @@ def new_user():
             last_name=form.last_name.data,
             email=form.email.data,
             password=form.password.data)
-        #db.session.add(user)
-        #db.session.commit()
         user.save()
         flash('User {} successfully created'.format(user.full_name()),
               'form-success')
@@ -61,8 +57,7 @@ def invite_user():
             user_id=user.id,
             token=token,
             _external=True)
-        get_queue().enqueue(
-            send_email,
+        send_email(
             recipient=user.email,
             subject='You Are Invited To Join',
             template='account/email/invite',

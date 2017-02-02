@@ -1,0 +1,6 @@
+{
+  "dev": {
+    "project_name": "flask-base",
+    "app_function": "app.app",
+  }
+}

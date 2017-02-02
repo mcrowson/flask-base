@@ -166,7 +166,7 @@ Note: first_name, last_name, email form an index table for easy lookup. See Role
   plaintext password on the server. This hashed password is
   checked against when authenticating users.
 
-`role_id` is the id of the role the user is. It is a foreign key
+`role` is the id of the role the user is. It is a foreign key
   and relates to the id's in the Role collection. By default
   the general user is role.id = 1, and role.id = 2 is the
   admin. Also note that we refer to the Role collection with

@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 import os
 import subprocess
-from config import Config
 
 # from flask.ext.migrate import Migrate, MigrateCommand
 from flask.ext.script import Manager, Shell
@@ -40,12 +39,7 @@ def test():
     unittest.TextTestRunner(verbosity=2).run(tests)
 
 
-@manager.command
-def recreate_db():
-    """
-    Recreates a local database. You probably should not use this on
-    production.
-    """
+def drop_all():
     if Role.exists():
         Role.delete_table()
     if User.exists():
@@ -53,13 +47,24 @@ def recreate_db():
     if EditableHTML.exists():
         EditableHTML.delete_table()
 
-    #User.create_table(wait=True)
-    Role.create_table(wait=True)
-    EditableHTML.create_table(wait=True)
 
-    # db.drop_all()
-    # db.create_all()
-    # db.session.commit()
+def create_all():
+    if not User.exists():
+        User.create_table(wait=True)
+    if not Role.exists():
+        Role.create_table(wait=True)
+    if not EditableHTML.exists():
+        EditableHTML.create_table(wait=True)
+
+
+@manager.command
+def recreate_db():
+    """
+    Recreates a local database. You probably should not use this on
+    production.
+    """
+    drop_all()
+    create_all()
 
 
 @manager.option(
