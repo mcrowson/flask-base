@@ -6,7 +6,7 @@ from wtforms.fields.html5 import EmailField
 from wtforms.validators import Email, EqualTo, InputRequired, Length
 
 #from .. import db
-from ..models import User
+from ..models import User, UserHandler
 
 
 class ChangeUserEmailForm(Form):
@@ -20,12 +20,12 @@ class ChangeUserEmailForm(Form):
 
 
 class ChangeAccountTypeForm(Form):
-    role = QuerySelectField(
+    group = QuerySelectField(
         'New account type',
         validators=[InputRequired()],
         get_label='name',
         #query_factory=lambda: db.session.query(Role).order_by('permissions'))
-        query_factory=lambda: Role.scan())
+        query_factory=UserHandler.list_groups())
     submit = SubmitField('Update role')
 
 
@@ -34,8 +34,7 @@ class InviteUserForm(Form):
         'Account type',
         validators=[InputRequired()],
         get_label='name',
-        #query_factory=lambda: db.session.query(Role).order_by('permissions'))
-        query_factory = lambda: Role.scan())
+        query_factory=UserHandler.list_groups())
     first_name = StringField(
         'First name', validators=[InputRequired(), Length(1, 64)])
     last_name = StringField(
@@ -45,8 +44,7 @@ class InviteUserForm(Form):
     submit = SubmitField('Invite')
 
     def validate_email(self, field):
-        #if User.query.filter_by(email=field.data).first():
-        if User.scan(email__eq=field.data, limit=1):
+        if UserHandler.user_exists(email=field.data):
             raise ValidationError('Email already registered.')
 
 

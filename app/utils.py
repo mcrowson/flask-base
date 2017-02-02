@@ -13,8 +13,8 @@ def register_template_utils(app):
         from wtforms.fields import HiddenField
         return isinstance(field, HiddenField)
 
-    app.add_template_global(index_for_role)
+    app.add_template_global(index_for_group)
 
 
-def index_for_role(role):
-    return url_for(role.index)
+def index_for_group(group):
+    return url_for(group.arn)

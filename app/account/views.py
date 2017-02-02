@@ -15,8 +15,7 @@ def login():
     """Log in an existing user."""
     form = LoginForm()
     if form.validate_on_submit():
-        handler = UserHandler()
-        user = handler.get_user(form.email.data)
+        user = UserHandler.get_user(form.email.data)
         if user is not None:
             login_user(user, form.remember_me.data)
             flash('You are now logged in. Welcome back!', 'success')

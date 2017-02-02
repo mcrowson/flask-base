@@ -84,7 +84,7 @@ from main import main as main_blueprint
 
 app.register_blueprint(main_blueprint)
 app.register_blueprint(account_blueprint, url_prefix='/account')
-app.register_blueprint(admin_blueprint, url_prefix='/admin')
+app.register_blueprint(admin_blueprint, url_prefix=administrator)
 ```
 
 Blueprints allow us to set up url prefixes for routes contained

@@ -1,12 +1,12 @@
 from flask import abort, flash, redirect, render_template, url_for, request
 from flask.ext.login import current_user, login_required
 
-from forms import (ChangeAccountTypeForm, ChangeUserEmailForm, InviteUserForm,
+from forms import (ChangeAccountTypeForm, InviteUserForm,
                    NewUserForm)
 from . import admin
 from ..decorators import admin_required
 from ..email import send_email
-from ..models import User, EditableHTML
+from ..models import User, EditableHTML, UserHandler
 
 
 @admin.route('/')
@@ -14,7 +14,7 @@ from ..models import User, EditableHTML
 @admin_required
 def index():
     """Admin dashboard page."""
-    return render_template('admin/index.html')
+    return render_template('administrator/index.html')
 
 
 @admin.route('/new-user', methods=['GET', 'POST'])
@@ -25,7 +25,7 @@ def new_user():
     form = NewUserForm()
     if form.validate_on_submit():
         user = User(
-            role=form.role.data,
+            group=form.role.data,
             first_name=form.first_name.data,
             last_name=form.last_name.data,
             email=form.email.data,
@@ -33,7 +33,7 @@ def new_user():
         user.save()
         flash('User {} successfully created'.format(user.full_name()),
               'form-success')
-    return render_template('admin/new_user.html', form=form)
+    return render_template('administrator/new_user.html', form=form)
 
 
 @admin.route('/invite-user', methods=['GET', 'POST'])
@@ -44,7 +44,7 @@ def invite_user():
     form = InviteUserForm()
     if form.validate_on_submit():
         user = User(
-            role=form.role.data,
+            group=form.role.data,
             first_name=form.first_name.data,
             last_name=form.last_name.data,
             email=form.email.data)
@@ -65,7 +65,7 @@ def invite_user():
             invite_link=invite_link, )
         flash('User {} successfully invited'.format(user.full_name()),
               'form-success')
-    return render_template('admin/new_user.html', form=form)
+    return render_template('administrator/new_user.html', form=form)
 
 
 @admin.route('/users')
@@ -75,7 +75,7 @@ def registered_users():
     """View all registered users."""
     users = User.list_users()
     return render_template(
-        'admin/registered_users.html', users=users)
+        'administrator/registered_users.html', users=users)
 
 
 @admin.route('/user/<int:user_id>')
@@ -84,10 +84,10 @@ def registered_users():
 @admin_required
 def user_info(email):
     """View a user's profile."""
-    user = User.get_user(email=email)
+    user = UserHandler.get_user(email=email)
     if user is None:
         abort(404)
-    return render_template('admin/manage_user.html', user=user)
+    return render_template('administrator/manage_user.html', user=user)
 
 
 @admin.route(
@@ -99,18 +99,18 @@ def change_account_type(email):
     if current_user.email == email:
         flash('You cannot change the type of your own account. Please ask '
               'another administrator to do this.', 'error')
-        return redirect(url_for('admin.user_info', email=email))
+        return redirect(url_for('.user_info', email=email))
 
     user = User.get_user(email)
     if user is None:
         abort(404)
     form = ChangeAccountTypeForm()
     if form.validate_on_submit():
-        user.role = form.role.data
+        user.group = form.role.data
         user.save()
         flash('Role for user {} successfully changed to {}.'
-              .format(user.full_name(), user.role.name), 'form-success')
-    return render_template('admin/manage_user.html', user=user, form=form)
+              .format(user.full_name(), user.group['GroupName']), 'form-success')
+    return render_template('administrator/manage_user.html', user=user, form=form)
 
 
 @admin.route('/user/<int:user_id>/delete')
@@ -121,7 +121,7 @@ def delete_user_request(user_id):
     user = User.get(user_id)
     if user is None:
         abort(404)
-    return render_template('admin/manage_user.html', user=user)
+    return render_template('administrator/manage_user.html', user=user)
 
 
 @admin.route('/user/<int:user_id>/_delete')
@@ -138,7 +138,7 @@ def delete_user(user_id):
         #db.session.commit()
         user.save()
         flash('Successfully deleted user %s.' % user.full_name(), 'success')
-    return redirect(url_for('admin.registered_users'))
+    return redirect(url_for('.registered_users'))
 
 
 @admin.route('/_update_editor_contents', methods=['POST'])

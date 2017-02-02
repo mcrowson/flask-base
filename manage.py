@@ -84,7 +84,16 @@ def setup_prod():
 
 def setup_general():
     """Runs the set-up needed for both local development and production.
-       Also sets up first admin user."""
+       Also sets up first administrator user."""
+
+    # create a pool and print the id
+    # create an app and print the id
+    # Create groups in cognito
+    # create administrator
+
+    # create the dynamo table
+    # add the about page to the dynamo table
+
     pass
 
 

@@ -9,6 +9,19 @@ from .. import login_manager
 
 class UserHandler(object):
 
+    @classmethod
+    @staticmethod
+    def list_groups(boto3_session=None):
+        if not boto3_session:
+            boto3_session = boto3.Session()
+
+        client = boto3_session.client('cognito-idp')
+        response = client.list_groups(
+            UserPoolId=current_app.config['COGNITO_POOL_ID']
+        )
+        return response.get('Groups', [])
+
+    @classmethod
     @staticmethod
     def list_users(boto3_session=None):
         if not boto3_session:
@@ -20,6 +33,7 @@ class UserHandler(object):
         )
         return response.get('Users', [])
 
+    @classmethod
     @staticmethod
     def get_user(email, boto3_session=None):
         if not boto3_session:
@@ -40,9 +54,12 @@ class UserHandler(object):
         for attribute in response.get('UserAttributes'):
             setattr(user, attribute[u'Name'], attribute[u'Value'])
 
+        user.group = user.get_group()
+
         return user
 
-    def authenticate_user(self, username, password, boto3_session=None):
+    @classmethod
+    def authenticate_user(cls, username, password, boto3_session=None):
         if not boto3_session:
             boto3_session = boto3.Session()
 
@@ -65,7 +82,25 @@ class UserHandler(object):
         session['access_token'] = response['AuthenticationResult']['AccessToken']
         session['token_type'] = response['AuthenticationResult']['TokenType']
 
-        return self.get_user(email=username)
+        return cls.get_user(email=username)
+
+    @classmethod
+    @staticmethod
+    def user_exists(email, boto3_session=None):
+        """Returns True if the user exists"""
+        if not boto3_session:
+            boto3_session = boto3.Session()
+
+        client = boto3_session.client('cognito-idp')
+        response = client.list_users(
+            UserPoolId=current_app.config['COGNITO_POOL_ID'],
+            AttributesToGet=['email'],
+            Limit=1,
+            Filter='email = \"{0!s}\"'.format(email)
+        )
+        if len(response.get('Users', [])) > 0:
+            return True
+        return False
 
 
 class User(UserMixin, object):
@@ -78,7 +113,7 @@ class User(UserMixin, object):
         self.given_name = None,
         self.family_name = None,
         self.session = None
-        self.role = None
+        self.group = 'main'
 
     def get_id(self):
         """Overriding because Cognito has username instead of an id field. We are using email/username interchangably"""
@@ -148,15 +183,18 @@ class User(UserMixin, object):
 
     def member_of_group(self, group_name):
         """Returns True if user is a member of the named group"""
+        return group_name == self.get_group().get('GroupName')
+
+    def get_group(self):
+        """Gets the user's group. It is possible to be in more than one group, but we assume just one group for this demo"""
         response = self.client.admin_list_groups_for_user(
             UserPoolId=current_app.config['COGNITO_POOL_ID'],
             Username=self.email,
         )
-
-        for group in response.get('Groups', []):
-            if group['GroupName'] == group_name:
-                return True
-        return False
+        group = response.get('Groups')
+        if not group or group == []:
+            group = [{'GroupName': 'main', 'Precedence': 0}]
+        return group.pop()
 
 
     @staticmethod
@@ -201,8 +239,7 @@ login_manager.anonymous_user = AnonymousUser
 
 @login_manager.user_loader
 def user_loader(email, boto3_session=None):
-    handler = UserHandler()
-    return handler.get_user(email, boto3_session=boto3_session)
+    return UserHandler.get_user(email, boto3_session=boto3_session)
 
 
 @login_manager.request_loader
@@ -210,6 +247,4 @@ def request_loader(request, boto3_session=None):
     email = request.form.get('email')
     password = request.form.get('password')
 
-    handler = UserHandler()
-
-    return handler.authenticate_user(username=email, password=password)
+    return UserHandler.authenticate_user(username=email, password=password)
