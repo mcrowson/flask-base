@@ -2,21 +2,15 @@ from flask import current_app, session
 from flask.ext.login import AnonymousUserMixin, UserMixin
 from itsdangerous import TimedJSONWebSignatureSerializer as Serializer
 from itsdangerous import BadSignature, SignatureExpired
-from werkzeug.security import check_password_hash, generate_password_hash
-
-from pynamodb.models import Model
-from pynamodb.indexes import GlobalSecondaryIndex, AllProjection
-from pynamodb.attributes import UnicodeAttribute, NumberAttribute, BooleanAttribute
-import os
 import boto3
 
 from .. import login_manager
 
 
-class User(UserMixin, object):
+class UserHandler(object):
 
-    @classmethod
-    def list_users(cls, boto3_session=None):
+    @staticmethod
+    def list_users(boto3_session=None):
         if not boto3_session:
             boto3_session = boto3.Session()
 
@@ -26,8 +20,8 @@ class User(UserMixin, object):
         )
         return response.get('Users', [])
 
-    @classmethod
-    def get_user(cls, email, boto3_session=None):
+    @staticmethod
+    def get_user(email, boto3_session=None):
         if not boto3_session:
             boto3_session = boto3.Session()
 
@@ -42,12 +36,43 @@ class User(UserMixin, object):
             return
 
         user = User()
+        user.enabled = response.get('Enabled', False)
         for attribute in response.get('UserAttributes'):
             setattr(user, attribute[u'Name'], attribute[u'Value'])
 
         return user
 
+    def authenticate_user(self, username, password, boto3_session=None):
+        if not boto3_session:
+            boto3_session = boto3.Session()
+
+        client = boto3_session.client('cognito-idp')
+        try:
+            response = client.admin_initiate_auth(
+                UserPoolId=current_app.config['COGNITO_POOL_ID'],
+                ClientId=current_app.config['COGNITO_APP_CLIENT_ID'],
+                AuthFlow='ADMIN_NO_SRP_AUTH',
+                AuthParameters={'USERNAME': username,
+                                'PASSWORD': password})
+        except Exception as m:
+            print m.message
+            # Ideally the exception UserNotFoundException would be specified, but it is declared in a json within botocore.
+            return
+
+        session['expires_in'] = response['AuthenticationResult']['ExpiresIn']
+        session['id_token'] = response['AuthenticationResult']['IdToken']
+        session['refresh_token'] = response['AuthenticationResult']['RefreshToken']
+        session['access_token'] = response['AuthenticationResult']['AccessToken']
+        session['token_type'] = response['AuthenticationResult']['TokenType']
+
+        return self.get_user(email=username)
+
+
+class User(UserMixin, object):
+
     def __init__(self, **kwargs):
+        super(User, self).__init__(**kwargs)
+
         self.client = boto3.client('cognito-idp')
         self.email = None
         self.given_name = None,
@@ -55,12 +80,9 @@ class User(UserMixin, object):
         self.session = None
         self.role = None
 
-        super(User, self).__init__(**kwargs)
-        if self.role is None:  # if self.role is None:
-            if self.email == current_app.config['ADMIN_EMAIL']:
-                self.add_to_group('administrator')
-            else:
-                self.add_to_group('general')
+    def get_id(self):
+        """Overriding because Cognito has username instead of an id field. We are using email/username interchangably"""
+        return self.email
 
     def full_name(self):
         return '%s %s' % (self.given_name, self.family_name)
@@ -179,37 +201,15 @@ login_manager.anonymous_user = AnonymousUser
 
 @login_manager.user_loader
 def user_loader(email, boto3_session=None):
-    return User.get_user(email, boto3_session=boto3_session)
+    handler = UserHandler()
+    return handler.get_user(email, boto3_session=boto3_session)
 
 
 @login_manager.request_loader
 def request_loader(request, boto3_session=None):
     email = request.form.get('email')
-    if not boto3_session:
-        boto3_session = boto3.Session()
+    password = request.form.get('password')
 
-    client = boto3_session.client('cognito-idp')
-    try:
-        response = client.admin_initiate_auth(
-            UserPoolId=current_app.config['COGNITO_POOL_ID'],
-            ClientId=current_app.config['COGNITO_APP_CLIENT_ID'],
-            AuthFlow='ADMIN_NO_SRP_AUTH',
-            AuthParameters={'USERNAME': request.form.get('email'),
-                            'PASSWORD': request.form['pw']})
-    except Exception:
-        # Ideally the exception UserNotFoundException would be specified, but it is declared in a json within botocore.
-        return
+    handler = UserHandler()
 
-    session.update(response.get(u'AuthenticationResult'))
-    response = client.admin_get_user(
-        UserPoolId=current_app.config['COGNITO_POOL_ID'],
-        Username=email
-    )
-
-    user = User()
-    user.session = session.get('SessionId')
-    for attribute in response.get('UserAttributes'):
-        setattr(user, attribute[u'Name'], attribute[u'Value'])
-
-    user.is_authenticated = True
-    return user
+    return handler.authenticate_user(username=email, password=password)

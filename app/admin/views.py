@@ -91,7 +91,7 @@ def user_info(email):
 
 
 @admin.route(
-    '/user/<str:email>/change-account-type', methods=['GET', 'POST'])
+    '/user/<int:email>/change-account-type', methods=['GET', 'POST'])
 @login_required
 @admin_required
 def change_account_type(email):

@@ -4,7 +4,7 @@ from flask.ext.login import (current_user, login_required, login_user,
 
 from . import account
 from ..email import send_email
-from ..models import User
+from ..models import UserHandler
 from .forms import (ChangePasswordForm, CreatePasswordForm,
                     LoginForm, RegistrationForm, RequestResetPasswordForm,
                     ResetPasswordForm)
@@ -15,10 +15,9 @@ def login():
     """Log in an existing user."""
     form = LoginForm()
     if form.validate_on_submit():
-
-        user = User.get(form.email.data)
-        if user is not None and user.password_hash is not None and \
-                user.verify_password(form.password.data):
+        handler = UserHandler()
+        user = handler.get_user(form.email.data)
+        if user is not None:
             login_user(user, form.remember_me.data)
             flash('You are now logged in. Welcome back!', 'success')
             return redirect(request.args.get('next') or url_for('main.index'))
@@ -37,8 +36,6 @@ def register():
             last_name=form.last_name.data,
             email=form.email.data,
             password=form.password.data)
-        #db.session.add(user)
-        #db.session.commit()
         user.save()
         token = user.generate_confirmation_token()
         confirm_link = url_for('account.confirm', token=token, _external=True)
@@ -218,10 +215,8 @@ def join_from_invite(user_id, token):
 @account.before_app_request
 def before_request():
     """Force user to confirm email before accessing login-required routes."""
-
-    me = current_user.next()
     if current_user.is_authenticated() \
-            and not current_user.confirmed \
+            and not current_user.enabled \
             and request.endpoint[:8] != 'account.' \
             and request.endpoint != 'static':
         return redirect(url_for('account.unconfirmed'))

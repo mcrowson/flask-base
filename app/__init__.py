@@ -8,7 +8,7 @@ from flask_compress import Compress
 
 from config import config
 from assets import app_css, app_js, vendor_css, vendor_js
-from models import User
+
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 

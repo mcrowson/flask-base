@@ -2,12 +2,9 @@
 import os
 import subprocess
 
-# from flask.ext.migrate import Migrate, MigrateCommand
 from flask.ext.script import Manager, Shell
-# from redis import Redis
-# from rq import Connection, Queue, Worker
 
-from app import create_app  #, db
+from app import create_app
 from app.models import User, EditableHTML
 
 if os.path.exists('.env'):
@@ -40,19 +37,11 @@ def test():
 
 
 def drop_all():
-    if Role.exists():
-        Role.delete_table()
-    if User.exists():
-        User.delete_table()
     if EditableHTML.exists():
         EditableHTML.delete_table()
 
 
 def create_all():
-    if not User.exists():
-        User.create_table(wait=True)
-    if not Role.exists():
-        Role.create_table(wait=True)
     if not EditableHTML.exists():
         EditableHTML.create_table(wait=True)
 
@@ -96,37 +85,7 @@ def setup_prod():
 def setup_general():
     """Runs the set-up needed for both local development and production.
        Also sets up first admin user."""
-    Role.insert_roles()
-    admin = Role.get('Administrator')
-    if admin is not None:
-        if User.get(Config.ADMIN_EMAIL) is None:
-            user = User(
-                first_name='Admin',
-                last_name='Account',
-                password=Config.ADMIN_PASSWORD,
-                confirmed=True,
-                email=Config.ADMIN_EMAIL)
-            # db.session.add(user)
-            # db.session.commit()
-            user.save()
-            print('Added administrator {}'.format(user.full_name()))
-
-'''
-No worker in serverless model
-@manager.command
-def run_worker():
-    """Initializes a slim rq task queue."""
-    listen = ['default']
-    conn = Redis(
-        host=app.config['RQ_DEFAULT_HOST'],
-        port=app.config['RQ_DEFAULT_PORT'],
-        db=0,
-        password=app.config['RQ_DEFAULT_PASSWORD'])
-
-    with Connection(conn):
-        worker = Worker(map(Queue, listen))
-        worker.work()
-'''
+    pass
 
 
 @manager.command
