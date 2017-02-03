@@ -6,7 +6,7 @@ from wtforms.fields import (BooleanField, PasswordField, StringField,
 from wtforms.fields.html5 import EmailField
 from wtforms.validators import Email, EqualTo, InputRequired, Length
 
-from ..models import UserHandler
+from app.cognito_handler import get_user
 
 
 class LoginForm(Form):
@@ -34,7 +34,7 @@ class RegistrationForm(Form):
 
     def validate_email(self, field):
         try:
-            existing_user = UserHandler.get_user(email=field.data)
+            existing_user = get_user(email=field.data)
         except Exception:
             # When we get a user that does not exist it raises an exception
             # Not sure of an elegant way to check if a user exists

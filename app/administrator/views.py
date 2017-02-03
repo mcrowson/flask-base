@@ -6,7 +6,8 @@ from forms import (ChangeAccountTypeForm, InviteUserForm,
 from . import admin
 from ..decorators import admin_required
 from ..email import send_email
-from ..models import User, EditableHTML, UserHandler
+from ..models import User, EditableHTML
+from app.cognito_handler import get_user
 
 
 @admin.route('/')
@@ -84,7 +85,7 @@ def registered_users():
 @admin_required
 def user_info(email):
     """View a user's profile."""
-    user = UserHandler.get_user(email=email)
+    user = get_user(email=email)
     if user is None:
         abort(404)
     return render_template('administrator/manage_user.html', user=user)

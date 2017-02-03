@@ -1,14 +1,12 @@
 import os
 
-from raygun4py.middleware import flask as flask_raygun
-
 basedir = os.path.abspath(os.path.dirname(__file__))
 
 
 class Config:
     APP_NAME = 'Flask-Base'
-    if os.environ.get('SECRET_KEY'):
-        SECRET_KEY = os.environ.get('SECRET_KEY')
+    if os.environ.get('SECRET_KEY', 'asdfasdfasdfasdf'):
+        SECRET_KEY = os.environ.get('SECRET_KEY', 'asdfasdfasdfasdf')
     else:
         SECRET_KEY = 'SECRET_KEY_ENV_VAR_NOT_SET'
         print('SECRET KEY ENV VAR NOT SET! SHOULD NOT SEE IN PRODUDCTION')
@@ -30,6 +28,7 @@ class Config:
     DYNAMO_URL = os.environ.get('DYNAMO_CONN', 'http://127.0.0.1:8000/')
     COGNITO_POOL_ID = os.environ.get('COGNITO_POOL_ID')
     COGNITO_APP_CLIENT_ID = os.environ.get('COGNITO_APP_CLIENT_ID')
+    FLASKS3_BUCKET_NAME = 'serverless-flask-base'
 
     @staticmethod
     def init_app(app):
@@ -39,6 +38,8 @@ class Config:
 class DevelopmentConfig(Config):
     DEBUG = True
     ASSETS_DEBUG = True
+    FLASK_ASSETS_USE_S3 = True
+    FLASK_S3_DEBUG = True
     print('THIS APP IS IN DEBUG MODE. YOU SHOULD NOT SEE THIS IN PRODUCTION.')
 
 
@@ -54,8 +55,6 @@ class ProductionConfig(Config):
     def init_app(cls, app):
         Config.init_app(app)
         assert os.environ.get('SECRET_KEY'), 'SECRET_KEY IS NOT SET!'
-
-        flask_raygun.Provider(app, app.config['RAYGUN_APIKEY']).attach()
 
 
 class UnixConfig(ProductionConfig):

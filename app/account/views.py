@@ -4,7 +4,7 @@ from flask.ext.login import (current_user, login_required, login_user,
 
 from . import account
 from ..email import send_email
-from ..models import UserHandler
+from app.cognito_handler import get_user
 from .forms import (ChangePasswordForm, CreatePasswordForm,
                     LoginForm, RegistrationForm, RequestResetPasswordForm,
                     ResetPasswordForm)
@@ -15,7 +15,7 @@ def login():
     """Log in an existing user."""
     form = LoginForm()
     if form.validate_on_submit():
-        user = UserHandler.get_user(form.email.data)
+        user = get_user(form.email.data)
         if user is not None:
             login_user(user, form.remember_me.data)
             flash('You are now logged in. Welcome back!', 'success')

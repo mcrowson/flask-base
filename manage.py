@@ -110,5 +110,13 @@ def format():
     subprocess.call(yapf, shell=True)
 
 
+@manager.command
+def upload_static_to_s3():
+    """Uploads static content to S3"""
+    import flask_s3
+    prod_app = create_app(os.getenv('FLASK_CONFIG') or 'default')
+    flask_s3.create_all(prod_app)
+
+
 if __name__ == '__main__':
     manager.run()
