@@ -1,11 +1,11 @@
 {
   "dev": {
     "project_name": "flask-base",
-    "s3_bucket": "serverless-flask-base-private",
     "remote_env": "s3://serverless-flask-base-private/dev_environment_vars.json",
     "app_function": "app.runserver.app",
     "manage_roles": false,
     "role_name": "ZappaLambdaExecutionCognito",
-    "keep_warm": false
+    "keep_warm": false,
+    "s3_bucket": "serverless-flask"
   }
 }
